@@ -66,6 +66,14 @@ function registerHeartbeat(req: any) {
   if (isConnectedVal !== undefined) {
     tallySyncState.tallyConnected = isConnectedVal === 'true' || isConnectedVal === true;
   }
+  // Persist status to Firestore so both the Render server and the preview environment can share the connection state!
+  if (isFirebaseInitialized) {
+    saveDocument("tally_status", "current", {
+      lastHeartbeat: tallySyncState.lastHeartbeat,
+      tallyConnected: tallySyncState.tallyConnected,
+      updatedAt: new Date().toISOString()
+    }).catch(err => console.error("Error saving heartbeat to Firestore:", err));
+  }
 }
 
 // -------------------------------------------------------------
@@ -372,12 +380,9 @@ app.post('/api/auth/login', (req, res) => {
 // --- COMPANIES ---
 app.get('/api/company', async (req, res) => {
   const list = await fetchCollection("companies");
-  const isRealConnectionActive = !tallySyncState.simulationMode && tallySyncState.lastHeartbeat && tallySyncState.tallyConnected;
-  if (isRealConnectionActive) {
-    const realCompanies = list.filter((c: any) => c.id !== "comp-01" && c.id !== "comp-02" && c.id !== "comp-03");
-    if (realCompanies.length > 0) {
-      return res.json(realCompanies);
-    }
+  const realCompanies = list.filter((c: any) => c.id !== "comp-01" && c.id !== "comp-02" && c.id !== "comp-03");
+  if (realCompanies.length > 0) {
+    return res.json(realCompanies);
   }
   res.json(list);
 });
@@ -651,17 +656,42 @@ app.get('/api/sync/status', async (req, res) => {
   let isServiceActive = false;
   let isTallyConnected = false;
 
+  // Try to load state from Firestore first if initialized (so we can sync heartbeat status between Render server and AI Studio)
+  let latestHeartbeat = tallySyncState.lastHeartbeat;
+  let latestTallyConnected = tallySyncState.tallyConnected;
+
+  if (isFirebaseInitialized) {
+    try {
+      const docRef = doc(db, "tally_status", "current");
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (data && data.lastHeartbeat) {
+          // Compare with local in-memory heartbeat and take the newest one
+          const firestoreTime = new Date(data.lastHeartbeat).getTime();
+          const localTime = tallySyncState.lastHeartbeat ? new Date(tallySyncState.lastHeartbeat).getTime() : 0;
+          if (firestoreTime > localTime) {
+            latestHeartbeat = data.lastHeartbeat;
+            latestTallyConnected = data.tallyConnected;
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Error fetching tally_status from Firestore:", err);
+    }
+  }
+
   if (tallySyncState.simulationMode) {
     isServiceActive = true;
     isTallyConnected = true;
   } else {
-    if (tallySyncState.lastHeartbeat) {
-      const lastHeartbeatTime = new Date(tallySyncState.lastHeartbeat).getTime();
+    if (latestHeartbeat) {
+      const lastHeartbeatTime = new Date(latestHeartbeat).getTime();
       const now = Date.now();
       // Service is active if the connector pinged within last 35 seconds
       if (now - lastHeartbeatTime < 35000) {
         isServiceActive = true;
-        isTallyConnected = tallySyncState.tallyConnected;
+        isTallyConnected = latestTallyConnected;
       }
     }
   }
@@ -670,7 +700,7 @@ app.get('/api/sync/status', async (req, res) => {
     connected: isTallyConnected,
     isServiceActive,
     simulationMode: tallySyncState.simulationMode,
-    lastSyncTime: tallySyncState.lastHeartbeat || new Date().toISOString(),
+    lastSyncTime: latestHeartbeat || new Date().toISOString(),
     totalVouchers,
     pendingVouchers,
     syncedVouchers,
