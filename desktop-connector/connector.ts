@@ -179,6 +179,81 @@ async function importVoucherIntoTally(voucher: any): Promise<boolean> {
 }
 
 /**
+ * Simple XML parser to extract Company Names from Tally Prime XML Responses
+ */
+function parseTallyCompaniesXML(xml: string): any[] {
+  const companies: any[] = [];
+  
+  // Clean CDATA if present
+  const cleanXml = xml.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1');
+
+  // Regexes to look for <COMPANYNAME>...</COMPANYNAME> or <NAME>...</NAME> within Company lists
+  const nameRegexes = [
+    /<COMPANYNAME>([^<]+)<\/COMPANYNAME>/gi,
+    /<RECONCILEDCOMPANYNAME>([^<]+)<\/RECONCILEDCOMPANYNAME>/gi,
+    /<NAME[^>]*>([^<]+)<\/NAME>/gi
+  ];
+
+  for (const regex of nameRegexes) {
+    let match;
+    while ((match = regex.exec(cleanXml)) !== null) {
+      const name = match[1].trim();
+      // Skip systemic name matches or very short matches
+      if (name && name.length > 2 && !name.includes('$$') && !companies.some(c => c.name === name)) {
+        companies.push({
+          id: 'comp-' + name.toLowerCase().replace(/[^a-z0-9]/g, '-'),
+          name: name,
+          state: "Active",
+          country: "India",
+          gstin: "GST-TALLY-ACTIVE",
+          financialYearFrom: new Date().getFullYear() + "-04-01",
+          booksBeginningFrom: new Date().getFullYear() + "-04-01",
+          createdAt: new Date().toISOString()
+        });
+      }
+    }
+  }
+
+  return companies;
+}
+
+/**
+ * Fetch list of loaded/active companies from Tally Prime Desktop
+ */
+async function exportCompaniesFromTally(): Promise<any[]> {
+  log("Requesting active/loaded companies list from Tally Prime XML Gateway...");
+
+  // Send standard List of Companies export request
+  const requestEnvelope = `
+    <ENVELOPE>
+      <HEADER>
+        <TALLYREQUEST>Export Data</TALLYREQUEST>
+      </HEADER>
+      <BODY>
+        <EXPORTDESC>
+          <STATICVARIABLES>
+            <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+          </STATICVARIABLES>
+          <REQUESTDESC>
+            <REPORTNAME>List of Companies</REPORTNAME>
+          </REQUESTDESC>
+        </EXPORTDESC>
+      </BODY>
+    </ENVELOPE>
+  `;
+
+  try {
+    const responseXml = await queryTallyXML(requestEnvelope);
+    const parsedCompanies = parseTallyCompaniesXML(responseXml);
+    log(`Tally active companies found: ${parsedCompanies.map(c => c.name).join(', ')}`);
+    return parsedCompanies;
+  } catch (err: any) {
+    log(`Failed to fetch active companies from Tally: ${err.message}`, 'ERROR');
+    return [];
+  }
+}
+
+/**
  * 3. Sync Execution Loop
  * Core loop performing the bi-directional sync
  */
@@ -298,7 +373,28 @@ async function executeSyncCycle() {
       log("No pending web vouchers to sync.");
     }
 
-    // B. PUSH Local Tally Vouchers up to Web ERP
+    // B. PUSH Active Tally Companies up to Web ERP
+    if (tallyConnected) {
+      try {
+        const tallyCompanies = await exportCompaniesFromTally();
+        if (tallyCompanies.length > 0) {
+          log(`Pushed ${tallyCompanies.length} active Tally companies to Cloud ERP...`);
+          const companyPushResponse = await axios.post(`${CONFIG.WEB_ERP_API_URL}/api/sync/push?tallyConnected=${tallyConnected}`, {
+            type: 'Company',
+            records: tallyCompanies
+          });
+          if (companyPushResponse.data.success) {
+            log(`Successfully synced ${tallyCompanies.length} companies to web database.`, 'SUCCESS');
+          }
+        } else {
+          log("No active companies found or failed to parse. Make sure you have at least one company open in Tally Prime.");
+        }
+      } catch (e: any) {
+        log(`Failed to sync active companies: ${e.message}`, 'ERROR');
+      }
+    }
+
+    // C. PUSH Local Tally Vouchers up to Web ERP
     if (tallyConnected) {
       const tallyVouchers = await exportNewVouchersFromTally(state.lastSyncedTimestamp);
       const newLocalVouchers = tallyVouchers.filter(v => !state.processedVouchers.includes(v.id));

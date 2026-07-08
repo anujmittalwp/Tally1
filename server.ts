@@ -372,6 +372,11 @@ app.post('/api/auth/login', (req, res) => {
 // --- COMPANIES ---
 app.get('/api/company', async (req, res) => {
   const list = await fetchCollection("companies");
+  const isRealConnectionActive = !tallySyncState.simulationMode && tallySyncState.lastHeartbeat && tallySyncState.tallyConnected;
+  if (isRealConnectionActive) {
+    const realCompanies = list.filter((c: any) => c.id !== "comp-01" && c.id !== "comp-02" && c.id !== "comp-03");
+    return res.json(realCompanies);
+  }
   res.json(list);
 });
 
@@ -715,6 +720,13 @@ app.post('/api/sync/push', async (req, res) => {
       successCount++;
     } else if (type === 'StockItem') {
       await saveDocument("stock_items", record.id, record);
+      successCount++;
+    } else if (type === 'Company') {
+      // Clear seed companies on first real push so we don't mix mock data with real Tally data
+      if (localDb.companies && localDb.companies.some(c => c.id === 'comp-01' || c.id === 'comp-02' || c.id === 'comp-03')) {
+        localDb.companies = [];
+      }
+      await saveDocument("companies", record.id, record);
       successCount++;
     }
   }

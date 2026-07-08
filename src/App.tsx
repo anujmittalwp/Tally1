@@ -36,10 +36,13 @@ export default function App() {
   const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('admin123');
   const [authError, setAuthError] = useState('');
-  const [isCheckingConnection, setIsCheckingConnection] = useState(false);
-  const [showCompanySelection, setShowCompanySelection] = useState(false);
-  const [tempUser, setTempUser] = useState<User | null>(null);
-  const [loginCompanies, setLoginCompanies] = useState<Company[]>([]);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+
+  // Company Selection Modal states
+  const [showCompanySelectModal, setShowCompanySelectModal] = useState(false);
+  const [companySelectionError, setCompanySelectionError] = useState('');
+  const [companySelectLoading, setCompanySelectLoading] = useState(false);
+  const [availableCompanies, setAvailableCompanies] = useState<Company[]>([]);
 
   // Fetch all databases from Express APIs
   const fetchAllData = async () => {
@@ -80,6 +83,31 @@ export default function App() {
     }
   }, [user]);
 
+  // Trigger function for selecting company (called on F1 or sidebar key click)
+  const handleSelectCompanyTrigger = async () => {
+    setCompanySelectionError('');
+    setCompanySelectLoading(true);
+    setShowCompanySelectModal(true);
+    try {
+      const statusRes = await fetch('/api/sync/status');
+      const statusData = await statusRes.json();
+      
+      if (!statusData.connected) {
+        setCompanySelectionError('Please Start Tally Connector.');
+        setCompanySelectLoading(false);
+        return;
+      }
+      
+      const compRes = await fetch('/api/company');
+      const comps = await compRes.json();
+      setAvailableCompanies(comps);
+      setCompanySelectLoading(false);
+    } catch (err) {
+      setCompanySelectionError('Please Start Tally Connector.');
+      setCompanySelectLoading(false);
+    }
+  };
+
   // Global keyboard listeners for hotkeys
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
@@ -87,11 +115,19 @@ export default function App() {
       if (e.key === 'Escape') {
         if (showGoToModal) {
           setShowGoToModal(false);
+        } else if (showCompanySelectModal) {
+          setShowCompanySelectModal(false);
         } else if (activeScreen !== 'gateway' && activeScreen !== 'login') {
           e.preventDefault();
           setActiveScreen('gateway');
           setVoucherToEdit(null);
         }
+      }
+
+      // F1 -> Select Company
+      if (e.key === 'F1' && activeScreen !== 'login') {
+        e.preventDefault();
+        handleSelectCompanyTrigger();
       }
 
       // Alt+G -> Go To
@@ -115,13 +151,13 @@ export default function App() {
 
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [activeScreen, showGoToModal]);
+  }, [activeScreen, showGoToModal, showCompanySelectModal]);
 
   // Login handler
   const handleLoginSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setAuthError('');
-    setIsCheckingConnection(true);
+    setIsLoggingIn(true);
     try {
       // 1. Verify credentials
       const response = await fetch('/api/auth/login', {
@@ -132,40 +168,25 @@ export default function App() {
       const data = await response.json();
       
       if (data.success && data.user) {
-        // 2. Check Tally Connection Status
-        const statusRes = await fetch('/api/sync/status');
-        const statusData = await statusRes.json();
-        
-        if (!statusData.connected) {
-          setAuthError('Please Start Tally Connector.');
-          setIsCheckingConnection(false);
-          return;
-        }
-        
-        // 3. Tally is connected! Fetch companies list
-        const compRes = await fetch('/api/company');
-        const comps = await compRes.json();
-        
-        setLoginCompanies(comps);
-        setTempUser(data.user);
-        setShowCompanySelection(true);
-        setIsCheckingConnection(false);
+        // Authenticate immediately and open the Tally gateway
+        setUser(data.user);
+        setActiveScreen('gateway');
+        setIsLoggingIn(false);
       } else {
         setAuthError(data.message || 'Login failed.');
-        setIsCheckingConnection(false);
+        setIsLoggingIn(false);
       }
     } catch (err) {
       setAuthError('Connection error to backend ERP.');
-      setIsCheckingConnection(false);
+      setIsLoggingIn(false);
     }
   };
 
   const handleLogout = () => {
     setUser(null);
     setActiveScreen('login');
-    setShowCompanySelection(false);
-    setTempUser(null);
-    setLoginCompanies([]);
+    setShowCompanySelectModal(false);
+    setAvailableCompanies([]);
   };
 
   // Create or Update Voucher
@@ -219,7 +240,7 @@ export default function App() {
   // Hotkey sidebar clicks
   const handleSidebarKeyClick = (key: string) => {
     if (key === 'F1') {
-      alert("ABC Electronics Ltd selected as default corporate entity.");
+      handleSelectCompanyTrigger();
     } else if (key === 'F2' || key === 'Alt+F2') {
       alert("Delhi region financial period: 01-Apr-2026 to 31-Mar-2027.");
     } else if (key === 'F3') {
@@ -286,143 +307,68 @@ export default function App() {
           {/* LOGIN SCREEN */}
           {activeScreen === 'login' && (
             <div className="flex-1 bg-[#E0E6E9] flex items-center justify-center p-4">
-              <div className="w-[450px] bg-white border border-gray-300 shadow-xl relative font-mono text-xs">
-                
-                {showCompanySelection ? (
-                  // STEP 2: SELECT COMPANY
-                  <div>
-                    <div className="bg-[#00426A] text-white text-center font-bold py-2.5 text-sm uppercase tracking-wider shadow-sm flex items-center justify-between px-4">
-                      <button 
-                        onClick={() => {
-                          setShowCompanySelection(false);
-                          setTempUser(null);
-                        }}
-                        className="text-white hover:text-[#F9A825] transition-colors"
-                        title="Back to Login"
-                      >
-                        <ArrowLeft className="w-4 h-4" />
-                      </button>
-                      <span>🏢 TallyPrime - Select Company</span>
-                      <div className="w-4"></div>
+              <div className="w-[420px] bg-white border border-gray-300 shadow-xl relative font-mono text-xs">
+                <div className="bg-[#00426A] text-white text-center font-bold py-2.5 text-sm uppercase tracking-wider shadow-sm">
+                  🔐 TallyPrime Login Authentication
+                </div>
+
+                <form onSubmit={handleLoginSubmit} className="p-6 space-y-4">
+                  {authError && (
+                    <div className="bg-red-50 text-red-700 p-2.5 border border-red-200 font-bold flex items-center space-x-1">
+                      <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0" />
+                      <span>{authError}</span>
+                    </div>
+                  )}
+
+                  <div className="space-y-3">
+                    <div className="space-y-1">
+                      <label className="block text-slate-500 font-bold uppercase text-[10px]">Username</label>
+                      <input
+                        type="text"
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value)}
+                        disabled={isLoggingIn}
+                        className="w-full bg-slate-50 border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:border-[#00426A] font-bold"
+                        placeholder="e.g. admin, accountant, operator"
+                      />
                     </div>
 
-                    <div className="p-6 space-y-4">
-                      <div className="bg-[#E7F3FF] p-3 border border-blue-200 text-slate-700 text-[10px] flex items-center space-x-2">
-                        <Wifi className="w-4 h-4 text-emerald-600 animate-pulse flex-shrink-0" />
-                        <span><strong>Tally Prime Connected!</strong> Please select an active company loaded from the Desktop Gateway.</span>
-                      </div>
-
-                      <div className="space-y-2 max-h-[250px] overflow-y-auto pr-1">
-                        {loginCompanies.length > 0 ? (
-                          loginCompanies.map((comp) => (
-                            <button
-                              key={comp.id}
-                              onClick={() => {
-                                setActiveCompany(comp);
-                                if (tempUser) {
-                                  setUser(tempUser);
-                                }
-                                setActiveScreen('gateway');
-                                setShowCompanySelection(false);
-                              }}
-                              className="w-full text-left p-3 border border-gray-200 hover:border-[#00426A] hover:bg-[#F4F9FC] transition-all flex items-start space-x-3 cursor-pointer group"
-                            >
-                              <Building className="w-4 h-4 text-slate-500 group-hover:text-[#00426A] mt-0.5 flex-shrink-0" />
-                              <div className="flex-1 min-w-0">
-                                <div className="font-bold text-slate-800 group-hover:text-[#00426A] truncate">
-                                  {comp.name}
-                                </div>
-                                <div className="text-[10px] text-slate-500 mt-1 flex justify-between">
-                                  <span>State: <strong>{comp.state}</strong></span>
-                                  <span>GSTIN: <strong>{comp.gstin}</strong></span>
-                                </div>
-                              </div>
-                            </button>
-                          ))
-                        ) : (
-                          <div className="p-4 border border-dashed border-gray-300 text-center text-slate-500 rounded">
-                            No companies found. Press Back and retry.
-                          </div>
-                        )}
-                      </div>
-
-                      <button
-                        onClick={() => {
-                          setShowCompanySelection(false);
-                          setTempUser(null);
-                        }}
-                        className="w-full border border-[#00426A] text-[#00426A] hover:bg-slate-50 font-bold py-2 text-xs uppercase cursor-pointer transition-all"
-                      >
-                        Cancel
-                      </button>
+                    <div className="space-y-1">
+                      <label className="block text-slate-500 font-bold uppercase text-[10px]">Password</label>
+                      <input
+                        type="password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        disabled={isLoggingIn}
+                        className="w-full bg-slate-50 border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:border-[#00426A] font-bold"
+                        placeholder="e.g. admin123"
+                      />
                     </div>
                   </div>
-                ) : (
-                  // STEP 1: CREDENTIALS & AUTODETECT
-                  <div>
-                    <div className="bg-[#00426A] text-white text-center font-bold py-2.5 text-sm uppercase tracking-wider shadow-sm">
-                      🔐 TallyPrime Login Authentication
-                    </div>
 
-                    <form onSubmit={handleLoginSubmit} className="p-6 space-y-4">
-                      {authError && (
-                        <div className="bg-red-50 text-red-700 p-2.5 border border-red-200 font-bold flex items-center space-x-1.5 leading-snug">
-                          <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0" />
-                          <span>{authError}</span>
-                        </div>
-                      )}
-
-                      <div className="space-y-3">
-                        <div className="space-y-1">
-                          <label className="block text-slate-500 font-bold uppercase text-[10px]">Username</label>
-                          <input
-                            type="text"
-                            value={username}
-                            onChange={(e) => setUsername(e.target.value)}
-                            disabled={isCheckingConnection}
-                            className="w-full bg-slate-50 border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:border-[#00426A] font-bold disabled:opacity-50"
-                            placeholder="e.g. admin, accountant, operator"
-                          />
-                        </div>
-
-                        <div className="space-y-1">
-                          <label className="block text-slate-500 font-bold uppercase text-[10px]">Password</label>
-                          <input
-                            type="password"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            disabled={isCheckingConnection}
-                            className="w-full bg-slate-50 border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:border-[#00426A] font-bold disabled:opacity-50"
-                            placeholder="e.g. admin123"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="bg-[#E7F3FF] p-3 border border-blue-200 text-slate-700 text-[10px] space-y-1 leading-relaxed">
-                        <p className="font-bold text-[#002D4E]">💡 Standard Simulated Roles Available:</p>
-                        <p>• <strong>admin</strong> (pass: <strong>admin123</strong>) — Full ERP Access</p>
-                        <p>• <strong>accountant</strong> (pass: <strong>acc123</strong>) — General reporting + Bookkeeper</p>
-                        <p>• <strong>operator</strong> (pass: <strong>op123</strong>) — Voucher entries only</p>
-                        <p>• <strong>viewer</strong> (pass: <strong>view123</strong>) — Read-only access</p>
-                      </div>
-
-                      <button
-                        type="submit"
-                        disabled={isCheckingConnection}
-                        className="w-full bg-[#00426A] hover:bg-[#002D4E] text-white font-bold py-2.5 text-xs uppercase shadow-md cursor-pointer transition-all flex items-center justify-center space-x-2 disabled:bg-slate-400 disabled:cursor-not-allowed"
-                      >
-                        {isCheckingConnection ? (
-                          <>
-                            <RotateCw className="w-3.5 h-3.5 animate-spin" />
-                            <span>Checking Tally Connection...</span>
-                          </>
-                        ) : (
-                          <span>Open Tally Gateway</span>
-                        )}
-                      </button>
-                    </form>
+                  <div className="bg-[#E7F3FF] p-3 border border-blue-200 text-slate-700 text-[10px] space-y-1 leading-relaxed">
+                    <p className="font-bold text-[#002D4E]">💡 Standard Simulated Roles Available:</p>
+                    <p>• <strong>admin</strong> (pass: <strong>admin123</strong>) — Full ERP Access</p>
+                    <p>• <strong>accountant</strong> (pass: <strong>acc123</strong>) — General reporting + Bookkeeper</p>
+                    <p>• <strong>operator</strong> (pass: <strong>op123</strong>) — Voucher entries only</p>
+                    <p>• <strong>viewer</strong> (pass: <strong>view123</strong>) — Read-only access</p>
                   </div>
-                )}
+
+                  <button
+                    type="submit"
+                    disabled={isLoggingIn}
+                    className="w-full bg-[#00426A] hover:bg-[#002D4E] text-white font-bold py-2.5 text-xs uppercase shadow-md cursor-pointer transition-all flex items-center justify-center space-x-2"
+                  >
+                    {isLoggingIn ? (
+                      <>
+                        <RotateCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>Logging In...</span>
+                      </>
+                    ) : (
+                      <span>Open Tally Gateway</span>
+                    )}
+                  </button>
+                </form>
               </div>
             </div>
           )}
@@ -627,6 +573,129 @@ export default function App() {
             <div className="bg-gray-100 px-4 py-1.5 text-[10px] text-gray-500 border-t border-gray-200 flex justify-between">
               <span>Press [Esc] to exit search</span>
               <span>TallyPrime Navigation</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* F1 COMPANY SELECTION MODAL */}
+      {showCompanySelectModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 font-mono text-xs">
+          <div className="bg-[#eef6f6] border-2 border-[#00426A] w-[450px] shadow-2xl overflow-hidden">
+            {/* Header */}
+            <div className="bg-[#00426A] text-white font-bold px-4 py-2.5 flex justify-between items-center border-b border-[#002D4E]">
+              <span className="flex items-center space-x-2">
+                <Building className="w-4 h-4 text-[#F9A825]" />
+                <span>🏢 TallyPrime - Select Company</span>
+              </span>
+              <button 
+                onClick={() => setShowCompanySelectModal(false)}
+                className="text-white hover:text-yellow-400 font-bold cursor-pointer"
+              >
+                [X]
+              </button>
+            </div>
+
+            {/* Main body */}
+            <div className="p-5 space-y-4">
+              {companySelectLoading ? (
+                <div className="py-12 flex flex-col items-center justify-center space-y-3 text-slate-600">
+                  <RotateCw className="w-8 h-8 animate-spin text-[#00426A]" />
+                  <span className="font-bold">Checking Tally Connector & active companies...</span>
+                </div>
+              ) : companySelectionError ? (
+                <div className="space-y-4">
+                  <div className="bg-red-50 text-red-700 p-4 border border-red-200 rounded font-bold flex items-start space-x-3 leading-snug">
+                    <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                    <div className="space-y-1">
+                      <p className="text-sm">Connection Failed!</p>
+                      <p className="text-xs font-normal text-red-600/95">{companySelectionError}</p>
+                    </div>
+                  </div>
+
+                  <div className="bg-amber-50 text-amber-800 p-3.5 border border-amber-200 text-[10px] rounded space-y-1 leading-relaxed">
+                    <p className="font-bold">💡 How to fix this:</p>
+                    <p>1. Ensure your local <strong>Tally Prime</strong> desktop application is open.</p>
+                    <p>2. Verify that the <strong>Tally Sync Connector</strong> utility is running in the background.</p>
+                  </div>
+
+                  <div className="flex space-x-3">
+                    <button
+                      onClick={handleSelectCompanyTrigger}
+                      className="flex-1 bg-[#00426A] hover:bg-[#002D4E] text-white font-bold py-2 text-xs uppercase cursor-pointer transition-all flex items-center justify-center space-x-2"
+                    >
+                      <RotateCw className="w-3.5 h-3.5" />
+                      <span>Retry Connection</span>
+                    </button>
+                    <button
+                      onClick={() => setShowCompanySelectModal(false)}
+                      className="flex-1 border border-gray-300 hover:bg-slate-100 text-slate-700 font-bold py-2 text-xs uppercase cursor-pointer transition-all"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="bg-[#E7F3FF] p-3 border border-blue-200 text-slate-700 text-[10px] flex items-center space-x-2">
+                    <Wifi className="w-4 h-4 text-emerald-600 animate-pulse flex-shrink-0" />
+                    <span><strong>Tally Prime Connected!</strong> Select an active company loaded on your desktop.</span>
+                  </div>
+
+                  <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+                    {availableCompanies.length > 0 ? (
+                      availableCompanies.map((comp) => (
+                        <button
+                          key={comp.id}
+                          onClick={() => {
+                            setActiveCompany(comp);
+                            setShowCompanySelectModal(false);
+                          }}
+                          className="w-full text-left p-3 border border-gray-200 hover:border-[#00426A] hover:bg-[#F4F9FC] transition-all flex items-start space-x-3 cursor-pointer group"
+                        >
+                          <Building className="w-4 h-4 text-slate-500 group-hover:text-[#00426A] mt-0.5 flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <div className="font-bold text-slate-800 group-hover:text-[#00426A] truncate">
+                              {comp.name}
+                            </div>
+                            <div className="text-[10px] text-slate-500 mt-1 flex justify-between">
+                              <span>State: <strong>{comp.state}</strong></span>
+                              <span>GSTIN: <strong>{comp.gstin}</strong></span>
+                            </div>
+                          </div>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="p-6 border border-dashed border-gray-300 text-center text-slate-500 rounded space-y-2">
+                        <p className="font-bold text-slate-700">No active companies found in Tally Prime.</p>
+                        <p className="text-[10px] text-slate-400">Please open at least one company in your desktop Tally application, then retry.</p>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex space-x-3">
+                    <button
+                      onClick={handleSelectCompanyTrigger}
+                      className="flex-1 border border-[#00426A] text-[#00426A] hover:bg-slate-50 font-bold py-2 text-xs uppercase cursor-pointer transition-all flex items-center justify-center space-x-1.5"
+                    >
+                      <RotateCw className="w-3.5 h-3.5" />
+                      <span>Refresh List</span>
+                    </button>
+                    <button
+                      onClick={() => setShowCompanySelectModal(false)}
+                      className="flex-1 border border-gray-300 hover:bg-slate-100 text-slate-700 font-bold py-2 text-xs uppercase cursor-pointer transition-all"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="bg-gray-100 px-4 py-1.5 text-[10px] text-gray-500 border-t border-gray-200 flex justify-between">
+              <span>Press [Esc] to exit</span>
+              <span>TallyPrime Integration</span>
             </div>
           </div>
         </div>
