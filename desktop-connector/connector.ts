@@ -19,7 +19,7 @@ import path from 'path';
 
 // Configuration Settings
 const CONFIG = {
-  WEB_ERP_API_URL: process.env.WEB_ERP_API_URL || 'https://ais-pre-cnj2ilaknpc4sc6aunm4yk-768640473343.asia-southeast1.run.app',
+  WEB_ERP_API_URL: process.env.WEB_ERP_API_URL || 'https://tally-by-anuj-mittal.onrender.com',
   TALLY_GATEWAY_URL: process.env.TALLY_GATEWAY_URL || 'http://localhost:9000',
   POLL_INTERVAL_MS: 10000, // Sync every 10 seconds
   LOG_FILE_PATH: path.join(__dirname, 'tally_sync_service.log'),
@@ -179,6 +179,19 @@ async function importVoucherIntoTally(voucher: any): Promise<boolean> {
 }
 
 /**
+ * Helper to unescape XML entities in Tally company names
+ */
+function unescapeXml(safe: string): string {
+  return safe
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'");
+}
+
+/**
  * Simple XML parser to extract Company Names from Tally Prime XML Responses
  */
 function parseTallyCompaniesXML(xml: string): any[] {
@@ -191,13 +204,20 @@ function parseTallyCompaniesXML(xml: string): any[] {
   const nameRegexes = [
     /<COMPANYNAME>([^<]+)<\/COMPANYNAME>/gi,
     /<RECONCILEDCOMPANYNAME>([^<]+)<\/RECONCILEDCOMPANYNAME>/gi,
-    /<NAME[^>]*>([^<]+)<\/NAME>/gi
+    /<SVCURRENTCOMPANY>([^<]+)<\/SVCURRENTCOMPANY>/gi,
+    /<CURRENTCOMPANY>([^<]+)<\/CURRENTCOMPANY>/gi,
+    /<NAME[^>]*>([^<]+)<\/NAME>/gi,
+    /<COMPANY\s+[^>]*NAME="([^"]+)"/gi,
+    /<COMPANY\s+[^>]*NAME='([^']+)'/gi,
+    /<COMPANYNAME\s+[^>]*NAME="([^"]+)"/gi,
+    /<COMPANYNAME\s+[^>]*NAME='([^']+)'/gi
   ];
 
   for (const regex of nameRegexes) {
     let match;
     while ((match = regex.exec(cleanXml)) !== null) {
-      const name = match[1].trim();
+      let name = match[1].trim();
+      name = unescapeXml(name);
       // Skip systemic name matches or very short matches
       if (name && name.length > 2 && !name.includes('$$') && !companies.some(c => c.name === name)) {
         companies.push({

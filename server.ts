@@ -375,7 +375,9 @@ app.get('/api/company', async (req, res) => {
   const isRealConnectionActive = !tallySyncState.simulationMode && tallySyncState.lastHeartbeat && tallySyncState.tallyConnected;
   if (isRealConnectionActive) {
     const realCompanies = list.filter((c: any) => c.id !== "comp-01" && c.id !== "comp-02" && c.id !== "comp-03");
-    return res.json(realCompanies);
+    if (realCompanies.length > 0) {
+      return res.json(realCompanies);
+    }
   }
   res.json(list);
 });
