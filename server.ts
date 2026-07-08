@@ -88,16 +88,38 @@ const localDb: { [collectionName: string]: any[] } = {
 function seedInitialLocalData() {
   const defaultCompanyId = "comp-01";
   
-  localDb.companies = [{
-    id: defaultCompanyId,
-    name: "ABC Electronics Ltd",
-    state: "Delhi",
-    country: "India",
-    gstin: "07AAAAA1111A1Z1",
-    financialYearFrom: "2026-04-01",
-    booksBeginningFrom: "2026-04-01",
-    createdAt: new Date().toISOString()
-  }];
+  localDb.companies = [
+    {
+      id: "comp-01",
+      name: "ABC Electronics Ltd",
+      state: "Delhi",
+      country: "India",
+      gstin: "07AAAAA1111A1Z1",
+      financialYearFrom: "2026-04-01",
+      booksBeginningFrom: "2026-04-01",
+      createdAt: new Date().toISOString()
+    },
+    {
+      id: "comp-02",
+      name: "Mittal Trading Corporation",
+      state: "Uttar Pradesh",
+      country: "India",
+      gstin: "09BBBBB2222B2Z2",
+      financialYearFrom: "2026-04-01",
+      booksBeginningFrom: "2026-04-01",
+      createdAt: new Date().toISOString()
+    },
+    {
+      id: "comp-03",
+      name: "Anuj Enterprise Pvt Ltd",
+      state: "Maharashtra",
+      country: "India",
+      gstin: "27CCCCC3333C3Z3",
+      financialYearFrom: "2026-04-01",
+      booksBeginningFrom: "2026-04-01",
+      createdAt: new Date().toISOString()
+    }
+  ];
 
   localDb.groups = [
     { id: "g-01", name: "Capital Account", category: "Liabilities" },

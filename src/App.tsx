@@ -7,7 +7,7 @@ import Reports from './components/Reports';
 import SyncPanel from './components/SyncPanel';
 import AIDashboard from './components/AIDashboard';
 import { Company, Voucher, Ledger, StockItem, Godown, CostCenter, User, ActivityLog } from './types';
-import { Bot, Search, LogIn, Lock, Check, HelpCircle, AlertCircle } from 'lucide-react';
+import { Bot, Search, LogIn, Lock, Check, HelpCircle, AlertCircle, Building, Wifi, ArrowLeft, Database, RotateCw } from 'lucide-react';
 
 export default function App() {
   // Navigation & User session states
@@ -36,6 +36,10 @@ export default function App() {
   const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('admin123');
   const [authError, setAuthError] = useState('');
+  const [isCheckingConnection, setIsCheckingConnection] = useState(false);
+  const [showCompanySelection, setShowCompanySelection] = useState(false);
+  const [tempUser, setTempUser] = useState<User | null>(null);
+  const [loginCompanies, setLoginCompanies] = useState<Company[]>([]);
 
   // Fetch all databases from Express APIs
   const fetchAllData = async () => {
@@ -117,28 +121,51 @@ export default function App() {
   const handleLoginSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setAuthError('');
+    setIsCheckingConnection(true);
     try {
+      // 1. Verify credentials
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password })
       });
       const data = await response.json();
+      
       if (data.success && data.user) {
-        setUser(data.user);
-        setActiveScreen('gateway');
-        setShowLoginModal(false);
+        // 2. Check Tally Connection Status
+        const statusRes = await fetch('/api/sync/status');
+        const statusData = await statusRes.json();
+        
+        if (!statusData.connected) {
+          setAuthError('Please Start Tally Connector.');
+          setIsCheckingConnection(false);
+          return;
+        }
+        
+        // 3. Tally is connected! Fetch companies list
+        const compRes = await fetch('/api/company');
+        const comps = await compRes.json();
+        
+        setLoginCompanies(comps);
+        setTempUser(data.user);
+        setShowCompanySelection(true);
+        setIsCheckingConnection(false);
       } else {
         setAuthError(data.message || 'Login failed.');
+        setIsCheckingConnection(false);
       }
     } catch (err) {
       setAuthError('Connection error to backend ERP.');
+      setIsCheckingConnection(false);
     }
   };
 
   const handleLogout = () => {
     setUser(null);
     setActiveScreen('login');
+    setShowCompanySelection(false);
+    setTempUser(null);
+    setLoginCompanies([]);
   };
 
   // Create or Update Voucher
@@ -259,60 +286,143 @@ export default function App() {
           {/* LOGIN SCREEN */}
           {activeScreen === 'login' && (
             <div className="flex-1 bg-[#E0E6E9] flex items-center justify-center p-4">
-              <div className="w-[420px] bg-white border border-gray-300 shadow-xl relative font-mono text-xs">
+              <div className="w-[450px] bg-white border border-gray-300 shadow-xl relative font-mono text-xs">
                 
-                {/* Visual Header */}
-                <div className="bg-[#00426A] text-white text-center font-bold py-2.5 text-sm uppercase tracking-wider shadow-sm">
-                  🔐 TallyPrime Login Authentication
-                </div>
-
-                <form onSubmit={handleLoginSubmit} className="p-6 space-y-4">
-                  {authError && (
-                    <div className="bg-red-50 text-red-700 p-2.5 border border-red-200 font-bold flex items-center space-x-1">
-                      <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0" />
-                      <span>{authError}</span>
-                    </div>
-                  )}
-
-                  <div className="space-y-3">
-                    <div className="space-y-1">
-                      <label className="block text-slate-500 font-bold uppercase text-[10px]">Username</label>
-                      <input
-                        type="text"
-                        value={username}
-                        onChange={(e) => setUsername(e.target.value)}
-                        className="w-full bg-slate-50 border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:border-[#00426A] font-bold"
-                        placeholder="e.g. admin, accountant, operator"
-                      />
+                {showCompanySelection ? (
+                  // STEP 2: SELECT COMPANY
+                  <div>
+                    <div className="bg-[#00426A] text-white text-center font-bold py-2.5 text-sm uppercase tracking-wider shadow-sm flex items-center justify-between px-4">
+                      <button 
+                        onClick={() => {
+                          setShowCompanySelection(false);
+                          setTempUser(null);
+                        }}
+                        className="text-white hover:text-[#F9A825] transition-colors"
+                        title="Back to Login"
+                      >
+                        <ArrowLeft className="w-4 h-4" />
+                      </button>
+                      <span>🏢 TallyPrime - Select Company</span>
+                      <div className="w-4"></div>
                     </div>
 
-                    <div className="space-y-1">
-                      <label className="block text-slate-500 font-bold uppercase text-[10px]">Password</label>
-                      <input
-                        type="password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        className="w-full bg-slate-50 border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:border-[#00426A] font-bold"
-                        placeholder="e.g. admin123"
-                      />
+                    <div className="p-6 space-y-4">
+                      <div className="bg-[#E7F3FF] p-3 border border-blue-200 text-slate-700 text-[10px] flex items-center space-x-2">
+                        <Wifi className="w-4 h-4 text-emerald-600 animate-pulse flex-shrink-0" />
+                        <span><strong>Tally Prime Connected!</strong> Please select an active company loaded from the Desktop Gateway.</span>
+                      </div>
+
+                      <div className="space-y-2 max-h-[250px] overflow-y-auto pr-1">
+                        {loginCompanies.length > 0 ? (
+                          loginCompanies.map((comp) => (
+                            <button
+                              key={comp.id}
+                              onClick={() => {
+                                setActiveCompany(comp);
+                                if (tempUser) {
+                                  setUser(tempUser);
+                                }
+                                setActiveScreen('gateway');
+                                setShowCompanySelection(false);
+                              }}
+                              className="w-full text-left p-3 border border-gray-200 hover:border-[#00426A] hover:bg-[#F4F9FC] transition-all flex items-start space-x-3 cursor-pointer group"
+                            >
+                              <Building className="w-4 h-4 text-slate-500 group-hover:text-[#00426A] mt-0.5 flex-shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <div className="font-bold text-slate-800 group-hover:text-[#00426A] truncate">
+                                  {comp.name}
+                                </div>
+                                <div className="text-[10px] text-slate-500 mt-1 flex justify-between">
+                                  <span>State: <strong>{comp.state}</strong></span>
+                                  <span>GSTIN: <strong>{comp.gstin}</strong></span>
+                                </div>
+                              </div>
+                            </button>
+                          ))
+                        ) : (
+                          <div className="p-4 border border-dashed border-gray-300 text-center text-slate-500 rounded">
+                            No companies found. Press Back and retry.
+                          </div>
+                        )}
+                      </div>
+
+                      <button
+                        onClick={() => {
+                          setShowCompanySelection(false);
+                          setTempUser(null);
+                        }}
+                        className="w-full border border-[#00426A] text-[#00426A] hover:bg-slate-50 font-bold py-2 text-xs uppercase cursor-pointer transition-all"
+                      >
+                        Cancel
+                      </button>
                     </div>
                   </div>
+                ) : (
+                  // STEP 1: CREDENTIALS & AUTODETECT
+                  <div>
+                    <div className="bg-[#00426A] text-white text-center font-bold py-2.5 text-sm uppercase tracking-wider shadow-sm">
+                      🔐 TallyPrime Login Authentication
+                    </div>
 
-                  <div className="bg-[#E7F3FF] p-3 border border-blue-200 text-slate-700 text-[10px] space-y-1 leading-relaxed">
-                    <p className="font-bold text-[#002D4E]">💡 Standard Simulated Roles Available:</p>
-                    <p>• <strong>admin</strong> (pass: <strong>admin123</strong>) — Full ERP Access</p>
-                    <p>• <strong>accountant</strong> (pass: <strong>acc123</strong>) — General reporting + Bookkeeper</p>
-                    <p>• <strong>operator</strong> (pass: <strong>op123</strong>) — Voucher entries only</p>
-                    <p>• <strong>viewer</strong> (pass: <strong>view123</strong>) — Read-only access</p>
+                    <form onSubmit={handleLoginSubmit} className="p-6 space-y-4">
+                      {authError && (
+                        <div className="bg-red-50 text-red-700 p-2.5 border border-red-200 font-bold flex items-center space-x-1.5 leading-snug">
+                          <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0" />
+                          <span>{authError}</span>
+                        </div>
+                      )}
+
+                      <div className="space-y-3">
+                        <div className="space-y-1">
+                          <label className="block text-slate-500 font-bold uppercase text-[10px]">Username</label>
+                          <input
+                            type="text"
+                            value={username}
+                            onChange={(e) => setUsername(e.target.value)}
+                            disabled={isCheckingConnection}
+                            className="w-full bg-slate-50 border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:border-[#00426A] font-bold disabled:opacity-50"
+                            placeholder="e.g. admin, accountant, operator"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="block text-slate-500 font-bold uppercase text-[10px]">Password</label>
+                          <input
+                            type="password"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            disabled={isCheckingConnection}
+                            className="w-full bg-slate-50 border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:border-[#00426A] font-bold disabled:opacity-50"
+                            placeholder="e.g. admin123"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="bg-[#E7F3FF] p-3 border border-blue-200 text-slate-700 text-[10px] space-y-1 leading-relaxed">
+                        <p className="font-bold text-[#002D4E]">💡 Standard Simulated Roles Available:</p>
+                        <p>• <strong>admin</strong> (pass: <strong>admin123</strong>) — Full ERP Access</p>
+                        <p>• <strong>accountant</strong> (pass: <strong>acc123</strong>) — General reporting + Bookkeeper</p>
+                        <p>• <strong>operator</strong> (pass: <strong>op123</strong>) — Voucher entries only</p>
+                        <p>• <strong>viewer</strong> (pass: <strong>view123</strong>) — Read-only access</p>
+                      </div>
+
+                      <button
+                        type="submit"
+                        disabled={isCheckingConnection}
+                        className="w-full bg-[#00426A] hover:bg-[#002D4E] text-white font-bold py-2.5 text-xs uppercase shadow-md cursor-pointer transition-all flex items-center justify-center space-x-2 disabled:bg-slate-400 disabled:cursor-not-allowed"
+                      >
+                        {isCheckingConnection ? (
+                          <>
+                            <RotateCw className="w-3.5 h-3.5 animate-spin" />
+                            <span>Checking Tally Connection...</span>
+                          </>
+                        ) : (
+                          <span>Open Tally Gateway</span>
+                        )}
+                      </button>
+                    </form>
                   </div>
-
-                  <button
-                    type="submit"
-                    className="w-full bg-[#00426A] hover:bg-[#002D4E] text-white font-bold py-2.5 text-xs uppercase shadow-md cursor-pointer transition-all"
-                  >
-                    Open Tally Gateway
-                  </button>
-                </form>
+                )}
               </div>
             </div>
           )}
