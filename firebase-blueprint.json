@@ -1,0 +1,197 @@
+{
+  "entities": {
+    "Company": {
+      "title": "Company",
+      "description": "A Tally ERP Company",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "state": { "type": "string" },
+        "country": { "type": "string" },
+        "gstin": { "type": "string" },
+        "financialYearFrom": { "type": "string" },
+        "booksBeginningFrom": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name"]
+    },
+    "Ledger": {
+      "title": "Ledger",
+      "description": "An accounting ledger representing an account",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "groupName": { "type": "string" },
+        "openingBalance": { "type": "number" },
+        "balanceType": { "type": "string", "enum": ["Dr", "Cr"] },
+        "currentBalance": { "type": "number" },
+        "gstEnabled": { "type": "boolean" },
+        "gstin": { "type": "string" },
+        "state": { "type": "string" },
+        "hsnCode": { "type": "string" },
+        "syncStatus": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "name", "groupName"]
+    },
+    "Group": {
+      "title": "Group",
+      "description": "An accounting group for ledgers",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "parentName": { "type": "string" },
+        "category": { "type": "string", "enum": ["Assets", "Liabilities", "Income", "Expenses"] }
+      },
+      "required": ["id", "name"]
+    },
+    "StockItem": {
+      "title": "StockItem",
+      "description": "An inventory item",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "unit": { "type": "string" },
+        "openingBalance": { "type": "number" },
+        "openingRate": { "type": "number" },
+        "openingValue": { "type": "number" },
+        "gstRate": { "type": "number" },
+        "hsnCode": { "type": "string" },
+        "currentStock": { "type": "number" }
+      },
+      "required": ["id", "name", "unit"]
+    },
+    "Unit": {
+      "title": "Unit",
+      "description": "An inventory unit of measure",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "symbol": { "type": "string" },
+        "formalName": { "type": "string" },
+        "decimalPlaces": { "type": "number" }
+      },
+      "required": ["id", "symbol"]
+    },
+    "Godown": {
+      "title": "Godown",
+      "description": "An inventory storage godown / warehouse",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "location": { "type": "string" }
+      },
+      "required": ["id", "name"]
+    },
+    "CostCenter": {
+      "title": "CostCenter",
+      "description": "An accounting cost center",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string" }
+      },
+      "required": ["id", "name"]
+    },
+    "Voucher": {
+      "title": "Voucher",
+      "description": "An accounting and inventory voucher (transaction)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "voucherNumber": { "type": "string" },
+        "date": { "type": "string" },
+        "voucherType": { "type": "string", "enum": ["Sales", "Purchase", "Payment", "Receipt", "Contra", "Journal", "Credit Note", "Debit Note"] },
+        "referenceNo": { "type": "string" },
+        "partyLedgerName": { "type": "string" },
+        "narration": { "type": "string" },
+        "amount": { "type": "number" },
+        "ledgerEntries": { "type": "string" },
+        "inventoryEntries": { "type": "string" },
+        "gstDetails": { "type": "string" },
+        "billWiseDetails": { "type": "string" },
+        "syncStatus": { "type": "string" },
+        "syncError": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "voucherNumber", "date", "voucherType", "amount"]
+    },
+    "SyncLog": {
+      "title": "SyncLog",
+      "description": "Synchronization log entry between web and desktop",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "direction": { "type": "string", "enum": ["WebToDesktop", "DesktopToWeb"] },
+        "status": { "type": "string", "enum": ["Success", "Failed", "Pending"] },
+        "recordsSynced": { "type": "number" },
+        "details": { "type": "string" },
+        "errorMessage": { "type": "string" }
+      },
+      "required": ["id", "timestamp", "direction", "status"]
+    },
+    "ActivityLog": {
+      "title": "ActivityLog",
+      "description": "User activity audit log",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "user": { "type": "string" },
+        "action": { "type": "string" },
+        "details": { "type": "string" }
+      },
+      "required": ["id", "timestamp", "action"]
+    }
+  },
+  "firestore": {
+    "companies": {
+      "schema": "Company",
+      "description": "Registered ERP Companies"
+    },
+    "companies/{companyId}/ledgers": {
+      "schema": "Ledger",
+      "description": "Ledgers of the company"
+    },
+    "companies/{companyId}/groups": {
+      "schema": "Group",
+      "description": "Ledger groups"
+    },
+    "companies/{companyId}/stock_items": {
+      "schema": "StockItem",
+      "description": "Stock items of the company"
+    },
+    "companies/{companyId}/units": {
+      "schema": "Unit",
+      "description": "Stock units of measure"
+    },
+    "companies/{companyId}/godowns": {
+      "schema": "Godown",
+      "description": "Stock storage godowns"
+    },
+    "companies/{companyId}/cost_centers": {
+      "schema": "CostCenter",
+      "description": "Cost centers of the company"
+    },
+    "companies/{companyId}/vouchers": {
+      "schema": "Voucher",
+      "description": "Financial vouchers / transactions"
+    },
+    "companies/{companyId}/sync_logs": {
+      "schema": "SyncLog",
+      "description": "Sync history and reports"
+    },
+    "companies/{companyId}/activity_logs": {
+      "schema": "ActivityLog",
+      "description": "Audit trails"
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "Tally Prime Web Desktop Sync ERP",
+  "description": "A production-ready accounting ERP system mirroring Tally Prime Desktop with real-time bi-directional synchronization, keyboard-driven navigation, multi-role security, and advanced Gemini AI transaction analysis.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
